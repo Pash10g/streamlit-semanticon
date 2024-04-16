@@ -39,20 +39,29 @@ def get_mongo_connection(uri):
     return client
 
 # MongoDB vector search
-def vector_search(embedding, collection):
+def vector_search(embedding, collection, num_results, filters):
+    # Dynamically build the query based on filters
+    query_array = []
+    if 'icons' in filters and 'illustrations' in filters:
+        query_array = [{"type": "icon"}, {"type": "illustration"}]
+    elif 'icons' in filters:
+        query_array = [{"type": "icon"}]
+    elif 'illustrations' in filters:
+        query_array = [{"type": "illustration"}]
+    query_filters = {"$or": query_array} if query_array else {}
     search_query = [
-        {
-            "$vectorSearch": {
-                "index": "vector_index",
-                "path": "embeddings",
-                "queryVector": embedding,
-                "numCandidates": 10,
-                "limit": 10
-            }
-        }
+        {"$vectorSearch": {
+            "index": "vector_index",
+            "path": "embeddings",
+            "queryVector": embedding,
+            "numCandidates": num_results,  # Increase candidates to ensure we filter enough results
+            "limit": num_results,
+            "filter": query_filters
+        }}
     ]
     results = list(collection.aggregate(search_query))
     return results
+
 
 def display_base64_image(base64_string, filename):
     """Decode a base64 image string and display it using Streamlit in a tile format.
@@ -107,18 +116,23 @@ client = get_mongo_connection(uri)
 db = client['mdb_icons']
 collection = db['icons']
 
-# Text input for query
+# User input setup
 user_query = st.text_input("Enter your query:")
+results_slider = st.slider("Number of results", min_value=5, max_value=100, value=10)
+icon_filter = st.checkbox("Icons", value=True)
+illustration_filter = st.checkbox("Illustrations", value=True)
 
-if user_query:
-    # Generate embeddings using AWS Bedrock
+filters = []
+if icon_filter:
+    filters.append('icons')
+if illustration_filter:
+    filters.append('illustrations')
+
+# Process the query
+if user_query and (icon_filter or illustration_filter):
     body = construct_bedrock_body(user_query)
     query_embedding = get_embedding_from_titan_multimodal(body)
-
-    # Search MongoDB using the generated embedding
-    results = vector_search(query_embedding, collection)
-
-    # Display the results
+    results = vector_search(query_embedding, collection, results_slider, filters)
     if results:
         st.write(f"Found {len(results)} results!")
         process_and_display_results(results)
