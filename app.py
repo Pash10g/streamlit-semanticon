@@ -58,6 +58,13 @@ def vector_search(embedding, collection, num_results, filters):
             "limit": num_results,
             "filter": query_filters
         }}
+        ,
+        {"$lookup": {
+            "from": "icon_metadata",
+            "localField": "file_name",
+            "foreignField": "Filename",
+            "as": "metadata"
+     }}
     ]
     results = list(collection.aggregate(search_query))
     return results
@@ -96,11 +103,13 @@ def process_and_display_results(results):
     for result in results:
         # Retrieve image and filename
         image, filename = display_base64_image(result['image'], result['file_name'])
-        
+        link = result['metadata'][0]['Brandfolder Asset Id'] if result['metadata'] else "N/A"
         # Display in the current column
         with cols[col_index]:
             
             st.image(image, caption=f"Image: {filename}", use_column_width=True)
+            if link != "N/A":
+                st.markdown(f"File URL: [Brandfolder link](https://brandfolder.com/mongodb/all-branded-assets/#!asset/{link})")
         
         # Update column index and reset if it exceeds the number of columns
         col_index += 1
